@@ -1,7 +1,7 @@
 import asyncio
 import os
-import random
 import time
+import random
 import requests
 
 from dotenv import load_dotenv
@@ -18,13 +18,13 @@ from aiogram.types import Message
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENROUTER_KEY = os.getenv("OPENROUTER_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 if not TELEGRAM_TOKEN:
     raise Exception("TELEGRAM_TOKEN not found")
 
-if not OPENROUTER_KEY:
-    raise Exception("OPENROUTER_KEY not found")
+if not GROQ_API_KEY:
+    raise Exception("GROQ_API_KEY not found")
 
 # =========================
 # BOT
@@ -34,23 +34,20 @@ bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 
 # =========================
-# LIMITS (ANTI SPAM + QUEUE)
+# ANTI-SPAM
 # =========================
 
 user_cooldown = {}
-COOLDOWN = 5
-
-request_lock = asyncio.Lock()
+COOLDOWN = 4
 
 # =========================
-# CHARACTER
+# CHARACTER (optional lore)
 # =========================
 
 CHARACTER = {
     "name": "RacerX",
-    "team": "Cloud Racing",
-    "number": random.randint(2, 99),
-    "series": "Premier Grand Prix Series"
+    "team": "Groq Racing",
+    "number": random.randint(2, 99)
 }
 
 # =========================
@@ -71,24 +68,22 @@ def save_history(user_id, user_msg, bot_msg):
     user_histories[user_id] = h[-20:]
 
 # =========================
-# OPENROUTER (CLOUDFLARE MODE)
+# GROQ AI
 # =========================
 
 def ask_ai(message, history):
 
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://example.com",
-        "X-Title": "Cloud Bot"
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
     }
 
     messages = [
         {
             "role": "system",
             "content": (
-                "Ты мемный, слегка токсичный чат-бот. "
-                "Отвечаешь коротко, с сарказмом и интернет-юмором."
+                "Ты мемный, шутливый чат-бот. "
+                "Отвечаешь как человек из Discord/Telegram, используешь сленг, сарказм."
             )
         }
     ]
@@ -97,32 +92,25 @@ def ask_ai(message, history):
     messages.append({"role": "user", "content": message})
 
     data = {
-        "model": "openai/gpt-4o-mini",
+        "model": "llama3-8b-8192",
         "messages": messages,
         "temperature": 0.9,
         "max_tokens": 400
     }
 
-    for attempt in range(4):
-        try:
-            r = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json=data,
-                timeout=60
-            )
+    try:
+        r = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json=data,
+            timeout=60
+        )
 
-            if r.status_code == 429:
-                time.sleep(2 + attempt * 2)
-                continue
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"]
 
-            r.raise_for_status()
-            return r.json()["choices"][0]["message"]["content"]
-
-        except Exception:
-            time.sleep(2)
-
-    return "Сервер перегружен 💀 попробуй ещё раз"
+    except Exception as e:
+        return f"API error: {e}"
 
 # =========================
 # START
@@ -133,8 +121,8 @@ async def start(message: Message):
     user_histories[message.from_user.id] = []
 
     await message.answer(
-        f"Йо 😎 я {CHARACTER['name']}\n"
-        f"Шарю за мемы и общение"
+        "Йо 😎 я Groq бот\n"
+        "Мемы, общение, сарказм — всё тут"
     )
 
 # =========================
@@ -144,7 +132,7 @@ async def start(message: Message):
 @dp.message(Command("clear"))
 async def clear(message: Message):
     user_histories[message.from_user.id] = []
-    await message.answer("Ок, память сбросил 👍")
+    await message.answer("Память очищена 👍")
 
 # =========================
 # MAIN HANDLER
@@ -188,12 +176,10 @@ async def handle_message(message: Message):
     if not should_reply:
         return
 
-    # -------- QUEUE LOCK (ВАЖНО ПРОТИВ 429) --------
+    # -------- AI --------
 
-    async with request_lock:
-
-        history = get_history(user_id)
-        response = ask_ai(text, history)
+    history = get_history(user_id)
+    response = ask_ai(text, history)
 
     if len(response) > 4096:
         response = response[:4093] + "..."
