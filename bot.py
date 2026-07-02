@@ -319,7 +319,7 @@ def ask_ai(message, history=None):
     )
 
     data = {
-        "model": "openrouter/free",
+        "model": "meta-llama/llama-3.3-8b-instruct:free"
         "messages": messages,
         "temperature": 0.8,
         "max_tokens": 600
