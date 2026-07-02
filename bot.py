@@ -319,7 +319,7 @@ def ask_ai(message, history=None):
     )
 
     data ={
-    "model": "google/gemma-3-12b-it:free",
+    "model": "deepseek/deepseek-r1-0528:free",
     "messages": messages,
     "max_tokens": 500,
     "temperature": 0.8
