@@ -319,10 +319,10 @@ def ask_ai(message, history=None):
     )
 
     data = {
-        "model": "meta-llama/llama-3.3-8b-instruct:free"
-        "messages": messages,
-        "temperature": 0.8,
-        "max_tokens": 600
+    "model": "meta-llama/llama-3.3-70b-instruct:free",
+    "messages": messages,
+    "max_tokens": 500,
+    "temperature": 0.8
     }
 
     try:
