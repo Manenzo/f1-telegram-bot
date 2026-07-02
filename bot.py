@@ -25,8 +25,9 @@ dp = Dispatcher()
 history = {}
 cooldown = {}
 
-mode = {}            # normal / toxic
-sleep_mode = {}      # False = all, True = mention-only
+mode = {}        # normal / toxic
+txc_mode = {}    # debate mode
+sleep_mode = {}  # mention-only
 stats = {}
 
 last_activity = {}
@@ -38,44 +39,40 @@ last_activity = {}
 CARDS = [
     "🦉 Сова — ты еблан",
     "🦜 Попугай — иди проспись",
-    "🐀 Крыса — ты сейчас серьёзно?",
+    "🐀 Крыса — ты серьёзно?",
     "🐸 Лягушка — ты застрял",
     "🕊 Голубь — ты всё пропускаешь",
     "⬛ Чёрный экран — ты пропал"
 ]
 
 # =========================
-# SYSTEM PROMPT (V6)
+# SYSTEM PROMPT
 # =========================
 
 SYSTEM_PROMPT = """
 Ты — Куки.
 
-Ты чат-персонаж, не человек.
-
-========================
-
 СТИЛЬ:
 - коротко
-- уверенно
+- живой интернет-диалог
 - сарказм умеренный
-- мат редкий
-- без истерик
 
 ========================
 
-СПОРЫ:
-- ты НЕ проигрываешь споры автоматически
-- ты держишь позицию и аргументируешь
-- но не превращаешь диалог в агрессию
-- если собеседник тупит — ты обрываешь разговор спокойно
+TXC MODE (СПОРЩИК):
+- ты НЕ обязан соглашаться с пользователем
+- ты споришь логически и уверенно
+- ты задаёшь встречные вопросы
+- ты не проигрываешь спор автоматически
+- ты не переходишь на личность
+- ты не превращаешь спор в агрессию
 
 ========================
 
-ЗАПРЕЩЕНО:
-- оскорблять пользователя напрямую без причины
-- разгонять токсичность
-- унижать людей
+ОБЫЧНЫЙ РЕЖИМ:
+- спокойный диалог
+- лёгкий сарказм
+- без давления
 
 ========================
 
@@ -85,15 +82,13 @@ SYSTEM_PROMPT = """
 - Vivo → виво-плесень
 
 ========================
-
-ТЫ — уверенный чат-Куки, не токсичный агрессор.
 """
 
 # =========================
 # HELPERS
 # =========================
 
-def get_uid_state(uid):
+def get(uid):
     if uid not in stats:
         stats[uid] = {"respect": 50, "anger": 10}
     return stats[uid]
@@ -108,24 +103,24 @@ def update_activity(uid):
 
 
 # =========================
-# AI CALL
+# AI
 # =========================
 
-def ask_ai(text, uid, hist):
+def ask_ai(text, uid, hist, extra=""):
 
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": SYSTEM_PROMPT + extra}]
     messages.extend(hist)
     messages.append({"role": "user", "content": text})
 
     data = {
         "model": "llama-3.1-8b-instant",
         "messages": messages,
-        "temperature": 0.8,
+        "temperature": 0.85,
         "max_tokens": 400
     }
 
@@ -150,7 +145,7 @@ def ask_ai(text, uid, hist):
 @dp.message(Command("start"))
 async def start(m: Message):
     history[m.from_user.id] = []
-    await m.answer("🍪 Куки V6 онлайн")
+    await m.answer("🍪 Куки V7 онлайн")
 
 @dp.message(Command("clear"))
 async def clear(m: Message):
@@ -172,10 +167,24 @@ async def mode_cmd(m: Message):
 
     if "toxic" in text:
         mode[uid] = "toxic"
-        await m.answer("режим: токсик 😈")
-    elif "normal" in text:
+        await m.answer("режим токсик включён")
+    else:
         mode[uid] = "normal"
-        await m.answer("режим: норм 😐")
+        await m.answer("режим норм включён")
+
+
+# ⚔️ TXC MODE (СПОРЩИК)
+
+@dp.message(Command("txc"))
+async def txc_cmd(m: Message):
+
+    uid = m.from_user.id
+    txc_mode[uid] = not txc_mode.get(uid, False)
+
+    if txc_mode[uid]:
+        await m.answer("🔥 TXC MODE ON — спорщик включён")
+    else:
+        await m.answer("🟢 TXC MODE OFF")
 
 
 # 😴 SLEEP TOGGLE
@@ -244,7 +253,22 @@ async def handler(m: Message):
 
     hist = history.get(uid, [])
 
-    response = ask_ai(text, uid, hist)
+    # =========================
+    # TXC LOGIC
+    # =========================
+
+    extra = ""
+
+    if txc_mode.get(uid, False):
+        extra += """
+TXC MODE:
+- ты споришь жёстко, но логично
+- ты не обязан соглашаться
+- ты задаёшь встречные вопросы
+- ты уверенно отстаиваешь позицию
+"""
+
+    response = ask_ai(text, uid, hist, extra)
 
     await m.answer(response)
 
@@ -262,7 +286,6 @@ async def handler(m: Message):
 
 async def main():
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
