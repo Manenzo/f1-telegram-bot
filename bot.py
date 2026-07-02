@@ -5,7 +5,6 @@ import asyncio
 import requests
 
 from aiogram import Bot, Dispatcher
-from aiogram.enums import ChatType
 from aiogram.filters import Command
 from aiogram.types import Message
 
@@ -26,11 +25,10 @@ dp = Dispatcher()
 history = {}
 cooldown = {}
 
-mode = {}
-sleeping = {}
+mode = {}            # normal / toxic
+sleep_mode = {}      # False = all, True = mention-only
 stats = {}
 
-SLEEP_TIME = 600
 last_activity = {}
 
 # =========================
@@ -40,18 +38,14 @@ last_activity = {}
 CARDS = [
     "🦉 Сова — ты еблан",
     "🦜 Попугай — иди проспись",
-    "🐀 Крыса — ты серьёзно сейчас?",
-    "🐱 Кот — ленивый гений или просто ленивый",
-    "🐶 Собака — мозг на 1%",
-    "🪶 Ворон — плохие решения близко",
+    "🐀 Крыса — ты сейчас серьёзно?",
     "🐸 Лягушка — ты застрял",
-    "🐙 Осьминог — хаос твоя жизнь",
     "🕊 Голубь — ты всё пропускаешь",
     "⬛ Чёрный экран — ты пропал"
 ]
 
 # =========================
-# SYSTEM PROMPT
+# SYSTEM PROMPT (V6)
 # =========================
 
 SYSTEM_PROMPT = """
@@ -59,44 +53,50 @@ SYSTEM_PROMPT = """
 
 Ты чат-персонаж, не человек.
 
+========================
+
 СТИЛЬ:
 - коротко
-- разговорно
-- сарказм
-- мат умеренно
-- токсичность ~67/100
+- уверенно
+- сарказм умеренный
+- мат редкий
+- без истерик
 
-ПОВЕДЕНИЕ:
-- в норме → обычный чат
-- токсик → подколы
-- RP → адекватный
-- не начинаешь конфликт первым
+========================
+
+СПОРЫ:
+- ты НЕ проигрываешь споры автоматически
+- ты держишь позицию и аргументируешь
+- но не превращаешь диалог в агрессию
+- если собеседник тупит — ты обрываешь разговор спокойно
+
+========================
+
+ЗАПРЕЩЕНО:
+- оскорблять пользователя напрямую без причины
+- разгонять токсичность
+- унижать людей
+
+========================
 
 БРЕНДЫ:
 - Samsung → самса / самса имба
 - iPhone → сифон
 - Vivo → виво-плесень
 
-ВАЖНО:
-Ты живой чат-Куки, не бот-ассистент.
+========================
+
+ТЫ — уверенный чат-Куки, не токсичный агрессор.
 """
 
 # =========================
 # HELPERS
 # =========================
 
-def get(uid):
+def get_uid_state(uid):
     if uid not in stats:
         stats[uid] = {"respect": 50, "anger": 10}
     return stats[uid]
-
-
-def get_mode(uid):
-    return mode.get(uid, "normal")
-
-
-def is_sleeping(uid):
-    return sleeping.get(uid, False)
 
 
 def roll_card():
@@ -104,19 +104,6 @@ def roll_card():
 
 
 def update_activity(uid):
-    last_activity[uid] = time.time()
-
-
-def check_sleep(uid):
-    if uid not in last_activity:
-        last_activity[uid] = time.time()
-
-    if time.time() - last_activity[uid] > SLEEP_TIME:
-        sleeping[uid] = True
-
-
-def wake(uid):
-    sleeping[uid] = False
     last_activity[uid] = time.time()
 
 
@@ -131,14 +118,14 @@ def ask_ai(text, uid, hist):
         "Content-Type": "application/json"
     }
 
-    m = [{"role": "system", "content": SYSTEM_PROMPT}]
-    m.extend(hist)
-    m.append({"role": "user", "content": text})
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages.extend(hist)
+    messages.append({"role": "user", "content": text})
 
     data = {
         "model": "llama-3.1-8b-instant",
-        "messages": m,
-        "temperature": 0.9,
+        "messages": messages,
+        "temperature": 0.8,
         "max_tokens": 400
     }
 
@@ -163,7 +150,7 @@ def ask_ai(text, uid, hist):
 @dp.message(Command("start"))
 async def start(m: Message):
     history[m.from_user.id] = []
-    await m.answer("🍪 Куки онлайн")
+    await m.answer("🍪 Куки V6 онлайн")
 
 @dp.message(Command("clear"))
 async def clear(m: Message):
@@ -175,8 +162,11 @@ async def card(m: Message):
     await m.answer(roll_card())
 
 
+# 🔥 MODE
+
 @dp.message(Command("mode"))
 async def mode_cmd(m: Message):
+
     uid = m.from_user.id
     text = m.text.lower()
 
@@ -186,19 +176,27 @@ async def mode_cmd(m: Message):
     elif "normal" in text:
         mode[uid] = "normal"
         await m.answer("режим: норм 😐")
-    else:
-        await m.answer("/mode toxic или /mode normal")
 
+
+# 😴 SLEEP TOGGLE
 
 @dp.message(Command("sleep"))
 async def sleep_cmd(m: Message):
-    uid = m.from_user.id
-    sleeping[uid] = True
-    await m.answer("я сплю 💀")
 
+    uid = m.from_user.id
+    sleep_mode[uid] = not sleep_mode.get(uid, False)
+
+    if sleep_mode[uid]:
+        await m.answer("💤 sleep ON (только @)")
+    else:
+        await m.answer("🟢 sleep OFF (все сообщения)")
+
+
+# 📊 STATS
 
 @dp.message(Command("stats"))
 async def stats_cmd(m: Message):
+
     uid = m.from_user.id
     s = stats.get(uid, {"respect": 50, "anger": 10})
 
@@ -207,29 +205,6 @@ async def stats_cmd(m: Message):
         f"🔥 уважение: {s['respect']}\n"
         f"😐 злость: {s['anger']}"
     )
-
-
-@dp.message(Command("reset"))
-async def reset_cmd(m: Message):
-    uid = m.from_user.id
-    stats[uid] = {"respect": 50, "anger": 10}
-    mode[uid] = "normal"
-    sleeping[uid] = False
-    await m.answer("сбросил персонажа")
-
-
-@dp.message(Command("persona"))
-async def persona_cmd(m: Message):
-    uid = m.from_user.id
-
-    stats[uid] = {
-        "respect": random.randint(30, 70),
-        "anger": random.randint(5, 20)
-    }
-
-    mode[uid] = random.choice(["normal", "toxic"])
-
-    await m.answer("новая личность создана 🎭")
 
 
 # =========================
@@ -245,25 +220,28 @@ async def handler(m: Message):
     uid = m.from_user.id
     text = m.text
 
+    me = await bot.get_me()
+    mention = f"@{me.username}"
+
+    # =========================
+    # SLEEP LOGIC
+    # =========================
+
+    if sleep_mode.get(uid, False):
+        if mention.lower() not in text.lower():
+            return
+
     # cooldown
     now = time.time()
     if uid in cooldown and now - cooldown[uid] < 2:
         return
     cooldown[uid] = now
 
-    # sleep system
-    check_sleep(uid)
-
-    if sleeping.get(uid):
-        wake(uid)
-        await m.answer("разбудил меня 💀")
-
-    # RP trigger
+    # card trigger
     if "погада" in text.lower():
         await m.answer(roll_card())
         return
 
-    # store history
     hist = history.get(uid, [])
 
     response = ask_ai(text, uid, hist)
