@@ -1,9 +1,8 @@
 import asyncio
-import json
 import os
 import random
-import requests
 import time
+import requests
 
 from dotenv import load_dotenv
 
@@ -42,14 +41,14 @@ user_cooldown = {}
 COOLDOWN = 3
 
 # =========================
-# CHARACTER
+# CHARACTER (просто лор)
 # =========================
 
 CHARACTER = {
-    "name": "Alex Rossi",
+    "name": "Alex",
     "team": "Lamborghini Corse",
     "number": random.randint(2, 99),
-    "series": "Premier Grand Prix Series",
+    "series": "Premier Grand Prix Series"
 }
 
 # =========================
@@ -84,7 +83,10 @@ def ask_ai(message, history):
     messages = [
         {
             "role": "system",
-            "content": "Ты мемный, слегка токсичный, шутливый чат-бот, как Discord пользователь."
+            "content": (
+                "Ты мемный, шутливый, слегка токсичный чат-бот. "
+                "Общаешься как человек из Discord/Telegram, используешь сленг, мемы."
+            )
         }
     ]
 
@@ -120,9 +122,9 @@ async def start(message: Message):
     user_histories[message.from_user.id] = []
 
     await message.answer(
-        f"Привет, я {CHARACTER['name']} 😎\n"
-        f"Команда: {CHARACTER['team']}\n"
-        f"Номер: #{CHARACTER['number']}"
+        f"Йо 😎\n"
+        f"Я {CHARACTER['name']}\n"
+        f"Шарю за мемы и гонки"
     )
 
 # =========================
@@ -132,7 +134,7 @@ async def start(message: Message):
 @dp.message(Command("clear"))
 async def clear(message: Message):
     user_histories[message.from_user.id] = []
-    await message.answer("История очищена 👍")
+    await message.answer("Ок, память очистил 👍")
 
 # =========================
 # MAIN HANDLER
@@ -153,7 +155,7 @@ async def handle_message(message: Message):
 
     if user_id in user_cooldown:
         if now - user_cooldown[user_id] < COOLDOWN:
-            await message.answer("Подожди пару секунд ⏳")
+            await message.answer("Чил, не спамь ⏳")
             return
 
     user_cooldown[user_id] = now
@@ -190,7 +192,7 @@ async def handle_message(message: Message):
     save_history(user_id, text, response)
 
 # =========================
-# MAIN LOOP
+# RUN
 # =========================
 
 async def main():
