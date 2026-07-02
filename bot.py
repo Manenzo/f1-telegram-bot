@@ -319,7 +319,7 @@ def ask_ai(message, history=None):
     )
 
     data = {
-        "model": "openai/gpt-4o-mini",
+        "model": "openrouter/free",
         "messages": messages,
         "temperature": 0.8,
         "max_tokens": 600
