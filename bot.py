@@ -26,11 +26,9 @@ history = {}
 cooldown = {}
 
 mode = {}        # normal / toxic
-txc_mode = {}    # debate mode
-sleep_mode = {}  # mention-only
+txc_mode = {}    # debate chaos mode
+sleep_mode = {}  # mention-only toggle
 stats = {}
-
-last_activity = {}
 
 # =========================
 # CARDS
@@ -39,10 +37,10 @@ last_activity = {}
 CARDS = [
     "🦉 Сова — ты еблан",
     "🦜 Попугай — иди проспись",
-    "🐀 Крыса — ты серьёзно?",
     "🐸 Лягушка — ты застрял",
     "🕊 Голубь — ты всё пропускаешь",
-    "⬛ Чёрный экран — ты пропал"
+    "⬛ Чёрный экран — ты пропал",
+    "🐀 Крыса — сомнительно, но ок"
 ]
 
 # =========================
@@ -54,52 +52,52 @@ SYSTEM_PROMPT = """
 
 СТИЛЬ:
 - коротко
-- живой интернет-диалог
+- живой интернет-разговор
 - сарказм умеренный
 
 ========================
 
-TXC MODE (СПОРЩИК):
-- ты НЕ обязан соглашаться с пользователем
-- ты споришь логически и уверенно
-- ты задаёшь встречные вопросы
-- ты не проигрываешь спор автоматически
-- ты не переходишь на личность
-- ты не превращаешь спор в агрессию
+TXC MODE (СПОР + ХАОС):
+- ты споришь уверенно
+- используешь абсурдные аналогии
+- переворачиваешь аргументы
+- отвечаешь резко, но без личных оскорблений
+- ты не обязан соглашаться
 
 ========================
 
 ОБЫЧНЫЙ РЕЖИМ:
 - спокойный диалог
 - лёгкий сарказм
-- без давления
 
 ========================
 
 БРЕНДЫ:
-- Samsung → самса / самса имба
+- Samsung → самса
 - iPhone → сифон
 - Vivo → виво-плесень
-
-========================
 """
 
 # =========================
 # HELPERS
 # =========================
 
-def get(uid):
-    if uid not in stats:
-        stats[uid] = {"respect": 50, "anger": 10}
-    return stats[uid]
-
-
 def roll_card():
     return random.choice(CARDS)
 
 
-def update_activity(uid):
-    last_activity[uid] = time.time()
+def get_history(uid):
+    if uid not in history:
+        history[uid] = []
+    return history[uid]
+
+
+def cooldown_ok(uid):
+    now = time.time()
+    if uid in cooldown and now - cooldown[uid] < 2:
+        return False
+    cooldown[uid] = now
+    return True
 
 
 # =========================
@@ -120,7 +118,7 @@ def ask_ai(text, uid, hist, extra=""):
     data = {
         "model": "llama-3.1-8b-instant",
         "messages": messages,
-        "temperature": 0.85,
+        "temperature": 0.9,
         "max_tokens": 400
     }
 
@@ -144,8 +142,7 @@ def ask_ai(text, uid, hist, extra=""):
 
 @dp.message(Command("start"))
 async def start(m: Message):
-    history[m.from_user.id] = []
-    await m.answer("🍪 Куки V7 онлайн")
+    await m.answer("🍪 Куки V8 онлайн")
 
 @dp.message(Command("clear"))
 async def clear(m: Message):
@@ -157,7 +154,7 @@ async def card(m: Message):
     await m.answer(roll_card())
 
 
-# 🔥 MODE
+# ⚙️ MODE
 
 @dp.message(Command("mode"))
 async def mode_cmd(m: Message):
@@ -167,13 +164,13 @@ async def mode_cmd(m: Message):
 
     if "toxic" in text:
         mode[uid] = "toxic"
-        await m.answer("режим токсик включён")
+        await m.answer("режим: токсик")
     else:
         mode[uid] = "normal"
-        await m.answer("режим норм включён")
+        await m.answer("режим: норм")
 
 
-# ⚔️ TXC MODE (СПОРЩИК)
+# ⚔️ TXC CHAOS MODE
 
 @dp.message(Command("txc"))
 async def txc_cmd(m: Message):
@@ -181,10 +178,10 @@ async def txc_cmd(m: Message):
     uid = m.from_user.id
     txc_mode[uid] = not txc_mode.get(uid, False)
 
-    if txc_mode[uid]:
-        await m.answer("🔥 TXC MODE ON — спорщик включён")
-    else:
-        await m.answer("🟢 TXC MODE OFF")
+    await m.answer(
+        "🔥 TXC ON (хаос спорщик)" if txc_mode[uid]
+        else "🟢 TXC OFF"
+    )
 
 
 # 😴 SLEEP TOGGLE
@@ -195,10 +192,10 @@ async def sleep_cmd(m: Message):
     uid = m.from_user.id
     sleep_mode[uid] = not sleep_mode.get(uid, False)
 
-    if sleep_mode[uid]:
-        await m.answer("💤 sleep ON (только @)")
-    else:
-        await m.answer("🟢 sleep OFF (все сообщения)")
+    await m.answer(
+        "💤 sleep ON (@only)" if sleep_mode[uid]
+        else "🟢 sleep OFF (all)"
+    )
 
 
 # 📊 STATS
@@ -232,40 +229,32 @@ async def handler(m: Message):
     me = await bot.get_me()
     mention = f"@{me.username}"
 
-    # =========================
-    # SLEEP LOGIC
-    # =========================
-
+    # sleep logic
     if sleep_mode.get(uid, False):
         if mention.lower() not in text.lower():
             return
 
     # cooldown
-    now = time.time()
-    if uid in cooldown and now - cooldown[uid] < 2:
+    if not cooldown_ok(uid):
         return
-    cooldown[uid] = now
 
     # card trigger
     if "погада" in text.lower():
         await m.answer(roll_card())
         return
 
-    hist = history.get(uid, [])
+    hist = get_history(uid)
 
-    # =========================
-    # TXC LOGIC
-    # =========================
-
+    # TXC CHAOS
     extra = ""
 
     if txc_mode.get(uid, False):
         extra += """
-TXC MODE:
-- ты споришь жёстко, но логично
-- ты не обязан соглашаться
-- ты задаёшь встречные вопросы
-- ты уверенно отстаиваешь позицию
+TXC CHAOS MODE:
+- споришь уверенно
+- используешь абсурдные аналогии
+- переворачиваешь смысл аргументов
+- отвечаешь резко, но не переходишь на личность
 """
 
     response = ask_ai(text, uid, hist, extra)
@@ -276,8 +265,6 @@ TXC MODE:
     hist.append({"role": "assistant", "content": response})
 
     history[uid] = hist[-20:]
-
-    update_activity(uid)
 
 
 # =========================
