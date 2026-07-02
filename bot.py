@@ -3,6 +3,7 @@ import json
 import os
 import random
 import requests
+import time  
 
 from dotenv import load_dotenv
 
@@ -33,6 +34,13 @@ if not OPENROUTER_KEY:
 bot = Bot(token=TELEGRAM_TOKEN)
 
 dp = Dispatcher()
+
+bot = Bot(token=TELEGRAM_TOKEN)
+
+dp = Dispatcher()
+
+user_cooldown = {}
+COOLDOWN = 3
 
 # ==========================================
 # CHARACTER FILE
