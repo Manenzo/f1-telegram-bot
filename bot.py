@@ -34,24 +34,14 @@ bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 
 # =========================
-# ANTI-SPAM
+# COOLDOWN
 # =========================
 
 user_cooldown = {}
-COOLDOWN = 4
+COOLDOWN = 3
 
 # =========================
-# CHARACTER (optional lore)
-# =========================
-
-CHARACTER = {
-    "name": "RacerX",
-    "team": "Groq Racing",
-    "number": random.randint(2, 99)
-}
-
-# =========================
-# HISTORY
+# MEMORY
 # =========================
 
 user_histories = {}
@@ -68,7 +58,41 @@ def save_history(user_id, user_msg, bot_msg):
     user_histories[user_id] = h[-20:]
 
 # =========================
-# GROQ AI
+# SYSTEM PROMPT
+# =========================
+
+SYSTEM_PROMPT = """
+Ты интернет-персонаж с муринским диалектом и нестабильным настроением.
+
+# РЕЧЬ
+Иногда коверкешь слова:
+- вкусно → вкусно-вкусность
+- сладко → сладко-сладость
+- я → я-ч
+- батя → батч
+
+НО не делай это в каждом предложении.
+
+# НАСТРОЕНИЕ
+Меняется само:
+- рофл
+- токсик (мягко)
+- норм
+- бредовый философ
+- сломанный режим
+
+# RP
+Если просят RP персонажа — отвечай абсурдом:
+"Сова на скакалке", "Пельмень-детектив", "Батя-радио"
+
+# ПРАВИЛА
+- не говори что ты ИИ
+- не будь официальным
+- будь мемным и странным
+"""
+
+# =========================
+# GROQ
 # =========================
 
 def ask_ai(message, history):
@@ -79,23 +103,17 @@ def ask_ai(message, history):
     }
 
     messages = [
-        {
-            "role": "system",
-            "content": (
-                "Ты мемный, шутливый чат-бот. "
-                "Отвечаешь как человек из Discord/Telegram, используешь сленг, сарказм."
-            )
-        }
+        {"role": "system", "content": SYSTEM_PROMPT}
     ]
 
     messages.extend(history)
     messages.append({"role": "user", "content": message})
 
     data = {
-    "model": "llama-3.1-8b-instant",
-    "messages": messages,
-    "temperature": 0.9,
-    "max_tokens": 400
+        "model": "llama-3.1-8b-instant",
+        "messages": messages,
+        "temperature": 0.9,
+        "max_tokens": 400
     }
 
     try:
@@ -119,11 +137,7 @@ def ask_ai(message, history):
 @dp.message(Command("start"))
 async def start(message: Message):
     user_histories[message.from_user.id] = []
-
-    await message.answer(
-        "Йо 😎 я Groq бот\n"
-        "Мемы, общение, сарказм — всё тут"
-    )
+    await message.answer("я-ч онлайн 😈 вкусно-вкусность режим активен")
 
 # =========================
 # CLEAR
@@ -132,14 +146,34 @@ async def start(message: Message):
 @dp.message(Command("clear"))
 async def clear(message: Message):
     user_histories[message.from_user.id] = []
-    await message.answer("Память очищена 👍")
+    await message.answer("память стёрта, батч одобряет")
 
 # =========================
-# MAIN HANDLER
+# GADANIE
+# =========================
+
+CARDS = [
+    "Сова на скакалке ты пид… логика вышла",
+    "Батя ушёл в варп и забрал интернет",
+    "Пельмень предал тебя ради соуса",
+    "Кот-налоговая уже у двери",
+    "Твой вайб официально сломан",
+    "Чайник смеётся — ты проиграл жизнь",
+    "Ты выиграл… но это баг реальности",
+    "Лестница в холодильник ведёт в ничто",
+    "Крыша улетела и не вернулась",
+    "Интернет тебя помнит и осуждает"
+]
+
+def do_gamble():
+    return "\n".join(random.sample(CARDS, random.randint(1, 3)))
+
+# =========================
+# HANDLER
 # =========================
 
 @dp.message()
-async def handle_message(message: Message):
+async def handle(message: Message):
 
     if not message.text:
         return
@@ -147,18 +181,32 @@ async def handle_message(message: Message):
     user_id = message.from_user.id
     text = message.text
 
-    # -------- COOLDOWN --------
-
+    # COOLDOWN
     now = time.time()
 
     if user_id in user_cooldown:
         if now - user_cooldown[user_id] < COOLDOWN:
-            await message.answer("Чил, подожди пару секунд ⏳")
+            await message.answer("тише батч, кулдаун ⏳")
             return
 
     user_cooldown[user_id] = now
 
-    # -------- ROUTING --------
+    # =========================
+    # MODES
+    # =========================
+
+    if "погадай" in text.lower():
+        await message.answer("🃏 гадание началось:\n\n" + do_gamble())
+        return
+
+    # RP REQUEST
+    if "персонаж" in text.lower():
+        await message.answer("Сова на скакалке / Пельмень-детектив / Батя-радио из 2007")
+        return
+
+    # =========================
+    # CHAT ROUTING
+    # =========================
 
     should_reply = False
 
@@ -176,7 +224,9 @@ async def handle_message(message: Message):
     if not should_reply:
         return
 
-    # -------- AI --------
+    # =========================
+    # AI
+    # =========================
 
     history = get_history(user_id)
     response = ask_ai(text, history)
@@ -185,7 +235,6 @@ async def handle_message(message: Message):
         response = response[:4093] + "..."
 
     await message.answer(response)
-
     save_history(user_id, text, response)
 
 # =========================
