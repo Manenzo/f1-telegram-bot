@@ -458,9 +458,73 @@ async def handle_message(message: Message):
     should_reply = False
 
     user_id = message.from_user.id
-
     text = message.text
 
+    # ==========================
+    # COOLDOWN (антиспам)
+    # ==========================
+
+    now = time.time()
+
+    if user_id in user_cooldown:
+        if now - user_cooldown[user_id] < COOLDOWN:
+            await message.answer("Слишком быстро, подожди пару секунд ⏳")
+            return
+
+    user_cooldown[user_id] = now
+
+    # ==========================
+    # ЛИЧНЫЙ ЧАТ
+    # ==========================
+
+    if message.chat.type == ChatType.PRIVATE:
+        should_reply = True
+
+    # ==========================
+    # ГРУППА
+    # ==========================
+
+    elif message.chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
+
+        me = await bot.get_me()
+        mention = f"@{me.username}"
+
+        if mention.lower() in text.lower():
+
+            should_reply = True
+
+            text = text.replace(mention, "").strip()
+
+            if text == "":
+                await message.answer(
+                    f"Да? Слушаю.\n\nЯ {CHARACTER['name']}."
+                )
+                return
+
+    # ==========================
+    # ЕСЛИ НЕ НАДО ОТВЕЧАТЬ
+    # ==========================
+
+    if not should_reply:
+        return
+
+    # ==========================
+    # AI
+    # ==========================
+
+    history = get_history(user_id)
+
+    response = ask_ai(text, history)
+
+    if len(response) > 4096:
+        response = response[:4093] + "..."
+
+    await message.answer(response)
+
+    save_history(user_id, text, response)
+
+    
+    
     # ======================================
     # ЛИЧНЫЙ ЧАТ
     # ======================================
