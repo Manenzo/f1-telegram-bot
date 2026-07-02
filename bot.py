@@ -319,8 +319,8 @@ def ask_ai(message, history=None):
     )
 
     data ={
-    "model": "deepseek/deepseek-r1-0528:free",
-    "messages": messages,
+    "model": "pool/laguna-xs-2.1:free",
+    "messages": messages,   
     "max_tokens": 500,
     "temperature": 0.8
     }
