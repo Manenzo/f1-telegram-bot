@@ -318,8 +318,8 @@ def ask_ai(message, history=None):
         }
     )
 
-    data = {
-    "model": "meta-llama/llama-3.3-70b-instruct:free",
+    data ={
+    "model": "google/gemma-3-12b-it:free",
     "messages": messages,
     "max_tokens": 500,
     "temperature": 0.8
