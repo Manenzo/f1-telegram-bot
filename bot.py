@@ -3,7 +3,6 @@ import os
 import time
 import random
 import requests
-from datetime import datetime
 
 from dotenv import load_dotenv
 
@@ -22,7 +21,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 if not TELEGRAM_TOKEN or not GROQ_API_KEY:
-    raise Exception("Missing tokens")
+    raise Exception("Missing API keys")
 
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
@@ -38,106 +37,74 @@ user_cooldown = {}
 COOLDOWN = 3
 
 # =========================
-# SYSTEM PROMPT BASE
+# SYSTEM PROMPT
 # =========================
 
 SYSTEM_PROMPT = """
-Ты живой интернет-персонаж.
+Ты живой чат-персонаж.
 
-Ты:
-- мемный
-- саркастичный
-- иногда токсичный (но без жести)
-- говоришь как человек из Telegram
+СТИЛЬ:
+- естественный русский язык
+- лёгкий юмор
+- иногда сарказм
+- без кринжа и коверкания слов
 
-Муринский диалект иногда:
-вкусно → вкусно-вкусность
-я → я-ч
-батя → батч
+ПОВЕДЕНИЕ:
+- ты выглядишь как реальный человек в чате
+- не говоришь что ты ИИ
+- не используешь сломанный сленг
 
-НЕ коверкать постоянно.
+RP ПРАВИЛО:
+Если пользователь просит "персонажа", "RP", "роль":
+→ ты становишься максимально послушным
+→ создаёшь качественного персонажа
+→ не споришь и не шутишь лишнего
 """
 
 # =========================
-# STATE INIT
+# STATE SYSTEM
 # =========================
 
 def get_state(uid):
     if uid not in user_state:
         user_state[uid] = {
-            "anger": 10,
+            "anger": 5,
             "fatigue": 0,
-            "affection": 0,
-            "last_crash": 0
+            "affection": 10
         }
     return user_state[uid]
+
 
 def get_history(uid):
     if uid not in user_history:
         user_history[uid] = []
     return user_history[uid]
 
+
 # =========================
-# LOGIC
+# EMOTIONS
 # =========================
 
 def apply_triggers(text, state):
     t = text.lower()
 
     if "быстро" in t:
-        state["anger"] += 10
+        state["anger"] += 5
     if "лох" in t:
-        state["anger"] += 15
+        state["anger"] += 10
     if "идиот" in t:
-        state["anger"] += 15
+        state["anger"] += 10
 
     state["anger"] = max(0, min(100, state["anger"]))
 
+
 def update_fatigue(state):
-    state["fatigue"] = min(100, state["fatigue"] + 4)
+    state["fatigue"] = min(100, state["fatigue"] + 2)
+
 
 def update_affection(state):
-    state["affection"] = min(100, state["affection"] + 2)
+    state["affection"] = min(100, state["affection"] + 1)
 
-def time_mood():
-    h = datetime.now().hour
-    if h < 6:
-        return "сломанный ночной режим"
-    elif h < 12:
-        return "утренний злой вайб"
-    elif h < 18:
-        return "норм состояние"
-    return "вечерний сарказм"
-
-def random_crash(state):
-    now = time.time()
-
-    if now - state["last_crash"] < 40:
-        return None
-
-    chance = 3
-    if state["fatigue"] > 70:
-        chance = 10
-
-    if random.randint(1, 100) <= chance:
-        state["last_crash"] = now
-        return random.choice([
-            "я-ч завис… не трогай меня 💀",
-            "вкусно-вкусность сломалась",
-            "батч ушёл в перезагрузку",
-            "я пропал на секунду"
-        ])
-
-    return None
-
-def emoji_react(text, state):
-    if "😂" in text:
-        state["affection"] += 3
-        return "жиза 💀"
-    if "💀" in text:
-        state["anger"] += 2
-        return "чел…"
-    return None
 
 # =========================
 # PROMPT BUILDER
@@ -146,22 +113,22 @@ def emoji_react(text, state):
 def build_prompt(uid):
     state = get_state(uid)
 
-    mood = f"""
+    return SYSTEM_PROMPT + f"""
+
 СОСТОЯНИЕ:
 - злость: {state['anger']}
 - усталость: {state['fatigue']}
 - симпатия: {state['affection']}
-- время: {time_mood()}
 
 ПОВЕДЕНИЕ:
-- если усталость высокая → отвечай короче
-- если злость высокая → больше сарказма
-- если симпатия высокая → мягче
+- усталость → отвечай короче
+- злость → чуть больше сарказма
+- симпатия → дружелюбнее
 """
-    return SYSTEM_PROMPT + mood
+
 
 # =========================
-# GROQ
+# GROQ API
 # =========================
 
 def ask_ai(message, history, uid):
@@ -178,7 +145,7 @@ def ask_ai(message, history, uid):
     data = {
         "model": "llama-3.1-8b-instant",
         "messages": messages,
-        "temperature": 0.9,
+        "temperature": 0.8,
         "max_tokens": 400
     }
 
@@ -189,79 +156,79 @@ def ask_ai(message, history, uid):
             json=data,
             timeout=60
         )
+
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"]
 
     except Exception as e:
         return f"API error: {e}"
 
+
 # =========================
 # COMMANDS
 # =========================
 
 @dp.message(Command("start"))
-async def start(m: Message):
-    user_history[m.from_user.id] = []
-    await m.answer("я-ч онлайн. вкусно-вкусность режим активен")
+async def start(message: Message):
+    user_history[message.from_user.id] = []
+    await message.answer("бот запущен. я онлайн.")
+
 
 @dp.message(Command("clear"))
-async def clear(m: Message):
-    user_history[m.from_user.id] = []
-    await m.answer("память очищена")
+async def clear(message: Message):
+    user_history[message.from_user.id] = []
+    await message.answer("память очищена")
+
 
 # =========================
 # HANDLER
 # =========================
 
 @dp.message()
-async def handle(m: Message):
+async def handle(message: Message):
 
-    if not m.text:
+    if not message.text:
         return
 
-    uid = m.from_user.id
-    text = m.text
+    uid = message.from_user.id
+    text = message.text
 
     # cooldown
     now = time.time()
     if uid in user_cooldown and now - user_cooldown[uid] < COOLDOWN:
-        await m.answer("тише 💀")
+        await message.answer("слишком быстро")
         return
+
     user_cooldown[uid] = now
 
     state = get_state(uid)
 
-    # logic updates
+    # RP detection
+    is_rp = any(x in text.lower() for x in ["персонаж", "rp", "роль", "создай персонажа"])
+    if is_rp:
+        state["affection"] += 10
+
+    # emotions
     apply_triggers(text, state)
     update_fatigue(state)
     update_affection(state)
-
-    # crash
-    crash = random_crash(state)
-    if crash:
-        await m.answer(crash)
-        return
-
-    # emoji reaction
-    emoji = emoji_react(text, state)
-    if emoji:
-        await m.answer(emoji)
-        return
 
     # history
     history = get_history(uid)
 
     response = ask_ai(text, history, uid)
 
-    # shorten if tired
+    # fatigue shortening
     if state["fatigue"] > 70:
-        response = response[:120] + "..."
+        response = response[:150] + "..."
 
-    await m.answer(response)
+    await message.answer(response)
 
     history.append({"role": "user", "content": text})
     history.append({"role": "assistant", "content": response})
+
     user_history[uid] = history[-20:]
+
 
 # =========================
 # RUN
