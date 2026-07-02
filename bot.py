@@ -21,10 +21,10 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENROUTER_KEY = os.getenv("OPENROUTER_KEY")
 
 if not TELEGRAM_TOKEN:
-    raise Exception("Не найден TELEGRAM_TOKEN")
+    raise Exception("TELEGRAM_TOKEN not found")
 
 if not OPENROUTER_KEY:
-    raise Exception("Не найден OPENROUTER_KEY")
+    raise Exception("OPENROUTER_KEY not found")
 
 # =========================
 # BOT
@@ -34,19 +34,21 @@ bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 
 # =========================
-# ANTI-SPAM
+# LIMITS (ANTI SPAM + QUEUE)
 # =========================
 
 user_cooldown = {}
-COOLDOWN = 3
+COOLDOWN = 5
+
+request_lock = asyncio.Lock()
 
 # =========================
-# CHARACTER (просто лор)
+# CHARACTER
 # =========================
 
 CHARACTER = {
-    "name": "Alex",
-    "team": "Lamborghini Corse",
+    "name": "RacerX",
+    "team": "Cloud Racing",
     "number": random.randint(2, 99),
     "series": "Premier Grand Prix Series"
 }
@@ -62,30 +64,31 @@ def get_history(user_id):
         user_histories[user_id] = []
     return user_histories[user_id]
 
-def save_history(user_id, user_message, bot_message):
-    history = get_history(user_id)
-
-    history.append({"role": "user", "content": user_message})
-    history.append({"role": "assistant", "content": bot_message})
-
-    user_histories[user_id] = history[-20:]
+def save_history(user_id, user_msg, bot_msg):
+    h = get_history(user_id)
+    h.append({"role": "user", "content": user_msg})
+    h.append({"role": "assistant", "content": bot_msg})
+    user_histories[user_id] = h[-20:]
 
 # =========================
-# AI REQUEST
+# OPENROUTER (CLOUDFLARE MODE)
 # =========================
 
 def ask_ai(message, history):
+
     headers = {
         "Authorization": f"Bearer {OPENROUTER_KEY}",
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://example.com",
+        "X-Title": "Cloud Bot"
     }
 
     messages = [
         {
             "role": "system",
             "content": (
-                "Ты мемный, шутливый, слегка токсичный чат-бот. "
-                "Общаешься как человек из Discord/Telegram, используешь сленг, мемы."
+                "Ты мемный, слегка токсичный чат-бот. "
+                "Отвечаешь коротко, с сарказмом и интернет-юмором."
             )
         }
     ]
@@ -94,24 +97,32 @@ def ask_ai(message, history):
     messages.append({"role": "user", "content": message})
 
     data = {
-        "model": "poolside/laguna-xs-2.1:free",
+        "model": "openai/gpt-4o-mini",
         "messages": messages,
-        "max_tokens": 500,
-        "temperature": 0.9
+        "temperature": 0.9,
+        "max_tokens": 400
     }
 
-    try:
-        r = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=60
-        )
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"]
+    for attempt in range(4):
+        try:
+            r = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=data,
+                timeout=60
+            )
 
-    except Exception as e:
-        return f"Ошибка API: {e}"
+            if r.status_code == 429:
+                time.sleep(2 + attempt * 2)
+                continue
+
+            r.raise_for_status()
+            return r.json()["choices"][0]["message"]["content"]
+
+        except Exception:
+            time.sleep(2)
+
+    return "Сервер перегружен 💀 попробуй ещё раз"
 
 # =========================
 # START
@@ -122,9 +133,8 @@ async def start(message: Message):
     user_histories[message.from_user.id] = []
 
     await message.answer(
-        f"Йо 😎\n"
-        f"Я {CHARACTER['name']}\n"
-        f"Шарю за мемы и гонки"
+        f"Йо 😎 я {CHARACTER['name']}\n"
+        f"Шарю за мемы и общение"
     )
 
 # =========================
@@ -134,7 +144,7 @@ async def start(message: Message):
 @dp.message(Command("clear"))
 async def clear(message: Message):
     user_histories[message.from_user.id] = []
-    await message.answer("Ок, память очистил 👍")
+    await message.answer("Ок, память сбросил 👍")
 
 # =========================
 # MAIN HANDLER
@@ -155,7 +165,7 @@ async def handle_message(message: Message):
 
     if user_id in user_cooldown:
         if now - user_cooldown[user_id] < COOLDOWN:
-            await message.answer("Чил, не спамь ⏳")
+            await message.answer("Чил, подожди пару секунд ⏳")
             return
 
     user_cooldown[user_id] = now
@@ -178,11 +188,12 @@ async def handle_message(message: Message):
     if not should_reply:
         return
 
-    # -------- AI --------
+    # -------- QUEUE LOCK (ВАЖНО ПРОТИВ 429) --------
 
-    history = get_history(user_id)
+    async with request_lock:
 
-    response = ask_ai(text, history)
+        history = get_history(user_id)
+        response = ask_ai(text, history)
 
     if len(response) > 4096:
         response = response[:4093] + "..."
