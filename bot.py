@@ -319,7 +319,7 @@ def ask_ai(message, history=None):
     )
 
     data ={
-    "model": "pool/laguna-xs-2.1:free",
+    "model": "poolside/laguna-xs-2.1:free",
     "messages": messages,   
     "max_tokens": 500,
     "temperature": 0.8
