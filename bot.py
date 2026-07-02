@@ -1,7 +1,7 @@
-import asyncio
 import os
 import time
 import random
+import asyncio
 import requests
 
 from aiogram import Bot, Dispatcher
@@ -26,43 +26,28 @@ dp = Dispatcher()
 history = {}
 cooldown = {}
 
-state = {}
-relation = {}
+mode = {}
+sleeping = {}
+stats = {}
 
-sleep_state = {
-    "last": time.time(),
-    "sleeping": False
-}
-
-COOLDOWN = 3
 SLEEP_TIME = 600
+last_activity = {}
 
 # =========================
-# SLANG
-# =========================
-
-SLANG = {
-    "samsung": "самса",
-    "iphone": "сифон",
-    "vivo": "виво-плесень",
-    "gt3": "GT3"
-}
-
-# =========================
-# CARDS (GADANIE)
+# CARDS
 # =========================
 
 CARDS = [
     "🦉 Сова — ты еблан",
     "🦜 Попугай — иди проспись",
-    "🐀 Крыса — ты сейчас серьёзно?",
+    "🐀 Крыса — ты серьёзно сейчас?",
     "🐱 Кот — ленивый гений или просто ленивый",
-    "🐶 Собака — 1% мозг, 99% уверенность",
-    "🪶 Ворон — плохие решения на подходе",
-    "🐸 Лягушка — ты застрял, поздравляю",
-    "🐙 Осьминог — хаос твой стиль жизни",
+    "🐶 Собака — мозг на 1%",
+    "🪶 Ворон — плохие решения близко",
+    "🐸 Лягушка — ты застрял",
+    "🐙 Осьминог — хаос твоя жизнь",
     "🕊 Голубь — ты всё пропускаешь",
-    "⬛ Чёрный экран — ну всё, ты пропал"
+    "⬛ Чёрный экран — ты пропал"
 ]
 
 # =========================
@@ -72,91 +57,71 @@ CARDS = [
 SYSTEM_PROMPT = """
 Ты — Куки.
 
-Ты не человек и не роль.
-Ты чат-персонаж с характером пользователя.
-
-========================
-
-ТОН:
-- токсичность ~67/100
-- короткие ответы
-- сарказм
-- лёгкие подколы
-- мат умеренно
-
-========================
-
-ПОВЕДЕНИЕ:
-- если грубят → отвечаешь жёстче, но не срываешься
-- если нормально → норм диалог
-- если RP → становишься адекватным и помогаешь
-- не устраиваешь конфликты первым
-
-========================
+Ты чат-персонаж, не человек.
 
 СТИЛЬ:
-- интернет-разговор
-- иногда "лапа/хвост" как эмоции (редко)
-- без официоза
+- коротко
+- разговорно
+- сарказм
+- мат умеренно
+- токсичность ~67/100
 
-========================
+ПОВЕДЕНИЕ:
+- в норме → обычный чат
+- токсик → подколы
+- RP → адекватный
+- не начинаешь конфликт первым
 
 БРЕНДЫ:
 - Samsung → самса / самса имба
 - iPhone → сифон
 - Vivo → виво-плесень
 
-========================
-
-ГЛАВНОЕ:
-Ты живой чат-Куки, а не бот-ассистент.
+ВАЖНО:
+Ты живой чат-Куки, не бот-ассистент.
 """
 
 # =========================
 # HELPERS
 # =========================
 
-def get_state(uid):
-    if uid not in state:
-        state[uid] = {"anger": 10, "fatigue": 0}
-    return state[uid]
+def get(uid):
+    if uid not in stats:
+        stats[uid] = {"respect": 50, "anger": 10}
+    return stats[uid]
 
 
-def get_rel(uid):
-    if uid not in relation:
-        relation[uid] = {"respect": 50}
-    return relation[uid]
+def get_mode(uid):
+    return mode.get(uid, "normal")
 
 
-def get_history(uid):
-    if uid not in history:
-        history[uid] = []
-    return history[uid]
-
-
-def apply_slang(text):
-    t = text.lower()
-    for k, v in SLANG.items():
-        t = t.replace(k, v)
-    return t
+def is_sleeping(uid):
+    return sleeping.get(uid, False)
 
 
 def roll_card():
     return random.choice(CARDS)
 
 
-def update_sleep():
-    now = time.time()
-    if now - sleep_state["last"] > SLEEP_TIME:
-        sleep_state["sleeping"] = True
+def update_activity(uid):
+    last_activity[uid] = time.time()
 
 
-def wake_up():
-    sleep_state["sleeping"] = False
-    sleep_state["last"] = time.time()
+def check_sleep(uid):
+    if uid not in last_activity:
+        last_activity[uid] = time.time()
+
+    if time.time() - last_activity[uid] > SLEEP_TIME:
+        sleeping[uid] = True
+
+
+def wake(uid):
+    sleeping[uid] = False
+    last_activity[uid] = time.time()
+
 
 # =========================
-# AI
+# AI CALL
 # =========================
 
 def ask_ai(text, uid, hist):
@@ -166,13 +131,13 @@ def ask_ai(text, uid, hist):
         "Content-Type": "application/json"
     }
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    messages.extend(hist)
-    messages.append({"role": "user", "content": text})
+    m = [{"role": "system", "content": SYSTEM_PROMPT}]
+    m.extend(hist)
+    m.append({"role": "user", "content": text})
 
     data = {
         "model": "llama-3.1-8b-instant",
-        "messages": messages,
+        "messages": m,
         "temperature": 0.9,
         "max_tokens": 400
     }
@@ -190,6 +155,7 @@ def ask_ai(text, uid, hist):
     except Exception as e:
         return f"API error: {e}"
 
+
 # =========================
 # COMMANDS
 # =========================
@@ -197,16 +163,74 @@ def ask_ai(text, uid, hist):
 @dp.message(Command("start"))
 async def start(m: Message):
     history[m.from_user.id] = []
-    await m.answer("Куки онлайн.")
+    await m.answer("🍪 Куки онлайн")
 
 @dp.message(Command("clear"))
 async def clear(m: Message):
     history[m.from_user.id] = []
-    await m.answer("очистил память")
+    await m.answer("память очищена")
 
 @dp.message(Command("card"))
 async def card(m: Message):
     await m.answer(roll_card())
+
+
+@dp.message(Command("mode"))
+async def mode_cmd(m: Message):
+    uid = m.from_user.id
+    text = m.text.lower()
+
+    if "toxic" in text:
+        mode[uid] = "toxic"
+        await m.answer("режим: токсик 😈")
+    elif "normal" in text:
+        mode[uid] = "normal"
+        await m.answer("режим: норм 😐")
+    else:
+        await m.answer("/mode toxic или /mode normal")
+
+
+@dp.message(Command("sleep"))
+async def sleep_cmd(m: Message):
+    uid = m.from_user.id
+    sleeping[uid] = True
+    await m.answer("я сплю 💀")
+
+
+@dp.message(Command("stats"))
+async def stats_cmd(m: Message):
+    uid = m.from_user.id
+    s = stats.get(uid, {"respect": 50, "anger": 10})
+
+    await m.answer(
+        f"📊 stats:\n"
+        f"🔥 уважение: {s['respect']}\n"
+        f"😐 злость: {s['anger']}"
+    )
+
+
+@dp.message(Command("reset"))
+async def reset_cmd(m: Message):
+    uid = m.from_user.id
+    stats[uid] = {"respect": 50, "anger": 10}
+    mode[uid] = "normal"
+    sleeping[uid] = False
+    await m.answer("сбросил персонажа")
+
+
+@dp.message(Command("persona"))
+async def persona_cmd(m: Message):
+    uid = m.from_user.id
+
+    stats[uid] = {
+        "respect": random.randint(30, 70),
+        "anger": random.randint(5, 20)
+    }
+
+    mode[uid] = random.choice(["normal", "toxic"])
+
+    await m.answer("новая личность создана 🎭")
+
 
 # =========================
 # MAIN HANDLER
@@ -223,47 +247,36 @@ async def handler(m: Message):
 
     # cooldown
     now = time.time()
-    if uid in cooldown and now - cooldown[uid] < COOLDOWN:
+    if uid in cooldown and now - cooldown[uid] < 2:
         return
     cooldown[uid] = now
 
     # sleep system
-    update_sleep()
-    just_woke = False
+    check_sleep(uid)
 
-    if sleep_state["sleeping"]:
-        wake_up()
-        just_woke = True
+    if sleeping.get(uid):
+        wake(uid)
+        await m.answer("разбудил меня 💀")
 
-    # slang
-    text = apply_slang(text)
+    # RP trigger
+    if "погада" in text.lower():
+        await m.answer(roll_card())
+        return
 
-    hist = get_history(uid)
-
-    # RP check
-    is_rp = any(x in text.lower() for x in ["rp", "персонаж", "создай"])
+    # store history
+    hist = history.get(uid, [])
 
     response = ask_ai(text, uid, hist)
-
-    # wake reaction
-    if just_woke:
-        response = random.choice([
-            "мм… разбудил меня",
-            "я спал вообще-то",
-            "чё случилось"
-        ]) + "\n\n" + response
-
-    # card trigger
-    if "погада" in text.lower():
-        response = roll_card()
 
     await m.answer(response)
 
     hist.append({"role": "user", "content": text})
     hist.append({"role": "assistant", "content": response})
+
     history[uid] = hist[-20:]
 
-    sleep_state["last"] = time.time()
+    update_activity(uid)
+
 
 # =========================
 # RUN
@@ -271,6 +284,7 @@ async def handler(m: Message):
 
 async def main():
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
