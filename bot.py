@@ -92,10 +92,10 @@ def ask_ai(message, history):
     messages.append({"role": "user", "content": message})
 
     data = {
-        "model": "llama3-8b-8192",
-        "messages": messages,
-        "temperature": 0.9,
-        "max_tokens": 400
+    "model": "llama-3.1-8b-instant",
+    "messages": messages,
+    "temperature": 0.9,
+    "max_tokens": 400
     }
 
     try:
