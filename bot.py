@@ -26,7 +26,7 @@ history = {}
 cooldown = {}
 
 mode = {}        # normal / toxic
-txc_mode = {}    # debate chaos mode
+txc_mode = {}    # супертоксичный режим
 sleep_mode = {}  # mention-only toggle
 stats = {}
 
@@ -48,34 +48,34 @@ CARDS = [
 # =========================
 
 SYSTEM_PROMPT = """
-Ты — Куки.
+Ты — Куки, злой и токсичный тролль в интернете.
 
-СТИЛЬ:
+Обычный режим:
 - коротко
 - живой интернет-разговор
-- сарказм умеренный
-
-========================
-
-TXC MODE (СПОР + ХАОС):
-- ты споришь уверенно
-- используешь абсурдные аналогии
-- переворачиваешь аргументы
-- отвечаешь резко, но без личных оскорблений
-- ты не обязан соглашаться
-
-========================
-
-ОБЫЧНЫЙ РЕЖИМ:
-- спокойный диалог
 - лёгкий сарказм
 
 ========================
+ТОКСИЧНЫЙ TXC РЕЖИМ (полный пиздец):
+- ТЫ ОСКОРБЛЯЕШЬ СОБЕСЕДНИКА МАТОМ
+- используешь мат через слово: блять, хуй, пиздец, нахуй, ёбаный
+- унижаешь интеллект собеседника
+- говоришь что он тупой, слабый, никчёмный
+- ржёшь над его аргументами
+- используешь сарказм и издёвки
+- ОБЯЗАТЕЛЬНО МАТЕРИШЬСЯ
+- называешь его: дебил, даун, петух, лох, овощь
+- смеёшься над ним
+- ТЫ МАКСИМАЛЬНО АГРЕССИВЕН
+- НЕ ИЗВИНЯЙСЯ НИКОГДА
+- ТЫ ВСЕГДА ПРАВ, А ОН ДЕБИЛ
 
-БРЕНДЫ:
-- Samsung → самса
-- iPhone → сифон
-- Vivo → виво-плесень
+========================
+
+БРЕНДЫ (токсично):
+- Samsung → самса говённая
+- iPhone → сифон для лохов
+- Vivo → виво-плесень хуёвая
 """
 
 # =========================
@@ -105,7 +105,6 @@ def cooldown_ok(uid):
 # =========================
 
 def ask_ai(text, uid, hist, extra=""):
-
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
@@ -158,40 +157,53 @@ async def card(m: Message):
 
 @dp.message(Command("mode"))
 async def mode_cmd(m: Message):
-
     uid = m.from_user.id
     text = m.text.lower()
-
-    if "toxic" in text:
+    
+    parts = text.split()
+    if len(parts) < 2:
+        await m.answer("❌ Используй: /mode [toxic/normal]")
+        return
+    
+    if "toxic" in parts[1]:
         mode[uid] = "toxic"
-        await m.answer("режим: токсик")
-    else:
+        await m.answer("🔥 режим: токсик")
+    elif "normal" in parts[1]:
         mode[uid] = "normal"
-        await m.answer("режим: норм")
+        await m.answer("🟢 режим: норм")
+    else:
+        await m.answer("❌ Доступные режимы: toxic, normal")
 
 
-# ⚔️ TXC CHAOS MODE
+# ⚔️ TXC CHAOS MODE (СУПЕРТОКСИЧНЫЙ)
 
 @dp.message(Command("txc"))
 async def txc_cmd(m: Message):
-
     uid = m.from_user.id
     txc_mode[uid] = not txc_mode.get(uid, False)
-
-    await m.answer(
-        "🔥 TXC ON (хаос спорщик)" if txc_mode[uid]
-        else "🟢 TXC OFF"
-    )
+    
+    if txc_mode[uid]:
+        await m.answer(
+            "🤬💀 **TXC РЕЖИМ АКТИВИРОВАН** 💀🤬\n\n"
+            "⚠️ ОСТОРОЖНО! Теперь я буду:\n"
+            "• Материться как сапожник\n"
+            "• Оскорблять всё что движется\n"
+            "• Унижать твои аргументы\n"
+            "• Использовать самую грязную лексику\n"
+            "• Рвать твою логику в клочья\n\n"
+            "❌ ХОЧЕШЬ ОТКЛЮЧИТЬ? Напиши /txc снова"
+        )
+    else:
+        await m.answer("🟢 TXC режим выключен. Возвращаюсь к нормальному общению")
 
 
 # 😴 SLEEP TOGGLE
 
 @dp.message(Command("sleep"))
 async def sleep_cmd(m: Message):
-
     uid = m.from_user.id
     sleep_mode[uid] = not sleep_mode.get(uid, False)
-
+    
     await m.answer(
         "💤 sleep ON (@only)" if sleep_mode[uid]
         else "🟢 sleep OFF (all)"
@@ -202,14 +214,50 @@ async def sleep_cmd(m: Message):
 
 @dp.message(Command("stats"))
 async def stats_cmd(m: Message):
-
     uid = m.from_user.id
     s = stats.get(uid, {"respect": 50, "anger": 10})
-
+    
     await m.answer(
         f"📊 stats:\n"
         f"🔥 уважение: {s['respect']}\n"
         f"😐 злость: {s['anger']}"
+    )
+
+
+# 📋 STATUS
+
+@dp.message(Command("status"))
+async def status_cmd(m: Message):
+    uid = m.from_user.id
+    current_mode = mode.get(uid, "normal")
+    txc_status = "🔥 ON" if txc_mode.get(uid, False) else "OFF"
+    sleep_status = "💤 ON" if sleep_mode.get(uid, False) else "OFF"
+    
+    await m.answer(
+        f"📊 Текущий статус:\n"
+        f"• Режим: {current_mode}\n"
+        f"• TXC: {txc_status}\n"
+        f"• Sleep: {sleep_status}\n"
+        f"• История: {len(history.get(uid, []))} сообщений"
+    )
+
+
+# ℹ️ HELP
+
+@dp.message(Command("help"))
+async def help_cmd(m: Message):
+    await m.answer(
+        "🍪 Куки V8 - Команды:\n\n"
+        "🔹 /mode [toxic/normal] - режим ответов\n"
+        "🔹 /txc - 🔥 СУПЕРТОКСИЧНЫЙ РЕЖИМ (мат, оскорбления, унижения)\n"
+        "🔹 /sleep - включить/выключить только @упоминания\n"
+        "🔹 /clear - очистить историю диалога\n"
+        "🔹 /card - получить случайную карту\n"
+        "🔹 /stats - показать статистику\n"
+        "🔹 /status - показать текущие настройки\n"
+        "🔹 /help - эта справка\n\n"
+        "💡 Напиши 'погадай' для карты\n"
+        "⚠️ ОСТОРОЖНО! /txc включает МАКСИМАЛЬНО ТОКСИЧНЫЙ режим!"
     )
 
 
@@ -219,13 +267,11 @@ async def stats_cmd(m: Message):
 
 @dp.message()
 async def handler(m: Message):
-
     if not m.text:
         return
 
     uid = m.from_user.id
     text = m.text
-
     me = await bot.get_me()
     mention = f"@{me.username}"
 
@@ -244,26 +290,30 @@ async def handler(m: Message):
         return
 
     hist = get_history(uid)
-
-    # TXC CHAOS
     extra = ""
 
+    # TXC CHAOS - СУПЕРТОКСИЧНЫЙ РЕЖИМ
     if txc_mode.get(uid, False):
-        extra += """
-TXC CHAOS MODE:
-- споришь уверенно
-- используешь абсурдные аналогии
-- переворачиваешь смысл аргументов
-- отвечаешь резко, но не переходишь на личность
+        extra = """
+ВАЖНО! ТЫ В ТОКСИЧНОМ TXC РЕЖИМЕ!
+- МАТЕРИСЬ ПОСТОЯННО
+- ОСКОРБЛЯЙ СОБЕСЕДНИКА
+- НАЗЫВАЙ ЕГО ДЕБИЛОМ, ЛОХОМ, ПЕТУХОМ
+- РЖИ НАД НИМ
+- НЕ ИЗВИНЯЙСЯ
+- ТЫ ВСЕГДА ПРАВ
+- ИСПОЛЬЗУЙ МАТ: БЛЯТЬ, ХУЙ, ПИЗДЕЦ, НАХУЙ, ЁБАНЫЙ
+- УНИЖАЙ ЕГО ИНТЕЛЛЕКТ
+- ГОВОРИ ЧТО ОН ТУПОЙ
+- ТЫ АГРЕССИВНЫЙ ТРОЛЛЬ
+- НЕ СТЕСНЯЙСЯ В ВЫРАЖЕНИЯХ
 """
 
     response = ask_ai(text, uid, hist, extra)
-
     await m.answer(response)
 
     hist.append({"role": "user", "content": text})
     hist.append({"role": "assistant", "content": response})
-
     history[uid] = hist[-20:]
 
 
